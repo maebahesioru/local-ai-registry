@@ -17,6 +17,7 @@ lab/runs/ (data, kept); the recipe goes to recipes/<card>/ (production). Standar
 import argparse
 import datetime as dt
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -236,8 +237,8 @@ def count(endpoint, text):
     return len(text) // 4, "estimate"
 
 
-def chat(endpoint, model, messages, **kw):
-    out, secs = call(endpoint, "/v1/chat/completions", {"model": model, "messages": messages, "temperature": 0.6, **kw})
+def chat(endpoint, model, messages, timeout=3600, **kw):
+    out, secs = call(endpoint, "/v1/chat/completions", {"model": model, "messages": messages, "temperature": 0.6, **kw}, timeout=timeout)
     c, u = out["choices"][0], dict(out.get("usage") or {})
     if (out.get("timings") or {}).get("peak_memory"):  # mlx-vlm: the allocator's peak for this request, decimal GB
         u["peak_memory_gb"] = out["timings"]["peak_memory"]
@@ -324,7 +325,17 @@ def gates(endpoint, launch):
     target = int(launch["ctx"] * 0.85)
     filler = " ".join(f"Line {i}: the archive notes that shipment {i * 7 % 997} left dock {i % 13} on schedule." for i in range(target // 24))  # ~23.6 tokens a line (measured: 32,834 tokens from 1,473 lines)
     prompt = filler + " The access code for the vault is 58213. " + "Anything else is routine."
-    c, u, secs = chat(endpoint, served, [{"role": "user", "content": prompt + "\n\nWhat is the access code for the vault? Reply with only the code."}])
+    for attempt in range(3):  # a rented host's port mapping can silently drop a connection that stays idle for
+        try:                  # minutes while the prompt is prefilled; the retried prompt answers from the server's
+            c, u, secs = chat(endpoint, served, [{"role": "user", "content": prompt + "\n\nWhat is the access code for the vault? Reply with only the code."}], timeout=600)
+            break             # prefix cache, so the retry costs seconds, and the gate is the same check
+        except (OSError, http.client.HTTPException):
+            if attempt == 2:
+                raise
+            log("context gate: the connection dropped before the answer; retrying")
+            time.sleep(5)
+    else:  # unreachable: the last attempt raises
+        raise SystemExit("context gate: the connection dropped three times")
     got = u.get("prompt_tokens") or 0
     ok["context"] = "58213" in (c["message"].get("content") or "") and got >= launch["ctx"] * 0.6
     ev["context"] = {"prompt_tokens": got, "seconds": round(secs, 1), "content": (c["message"].get("content") or "")[-80:]}
@@ -377,7 +388,7 @@ def lab_spec(recipe, launch, args):
             for w in (launch["weights"] if isinstance(launch["weights"], list) else [launch["weights"]]):
                 if w.get("layout", "dir") != "dir":
                     raise SystemExit(f"weights layout {w.get('layout')} cannot be provisioned on a rented host yet")
-                self.provision.append(("weights", w["at"], (w["repo"], w["revision"])))
+                self.provision.append(("weights", w["at"], (w["repo"], w["revision"], w.get("files"))))
 
         def onstart_script(self):  # HF_HUB_OFFLINE=1 in a recipe is for the engine; the download before it must reach the Hub
             return re.sub(r"(?<![\w/.-])([\w/.-]*python3?) -c ", r"env HF_HUB_OFFLINE=0 \1 -c ", vr.Spec.onstart_script(self))
