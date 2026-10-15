@@ -1,0 +1,71 @@
+{
+ "recipe": {
+  "model": "qwen3.5-9b",
+  "weights": "unsloth/Qwen3.5-9B-GGUF@3885219b6810b007914f3a7950a8d1b469d598a5",
+  "engine": "llama.cpp-qwen3.5-9b-q4-k-m-64k-gtx-1080-ti-11gb@52192a23c7b2",
+  "set": {},
+  "card": "gtx-1080-ti-11gb"
+ },
+ "where": {
+  "on": "vast",
+  "gpu": "GTX 1080 Ti",
+  "host": "United Kingdom, GB",
+  "cost_h": 0.04138888888888889
+ },
+ "passed": true,
+ "proof": {
+  "at": "2026-10-15",
+  "on": "vast",
+  "gpu": "GTX 1080 Ti",
+  "launch_sha256": "54900f175cd49db6f3aeffa8d4162ae8a89651f88ff4fa39104d46f29f7b4ab3",
+  "gates": "load chat reasoning tools context speed",
+  "tps": 41.6,
+  "prefill": 3039,
+  "served": "/models/Qwen3.5-9B-Q4_K_M.gguf"
+ },
+ "evidence": {
+  "ok": {
+   "load": true,
+   "chat": true,
+   "reasoning": true,
+   "tools": true,
+   "context": true,
+   "speed": true
+  },
+  "chat": {
+   "content": "Red, yellow, blue",
+   "finish": "stop"
+  },
+  "reasoning": {
+   "thinking_chars": 707,
+   "content": "391"
+  },
+  "tools": {
+   "call": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "arguments": "{\"city\":\"Paris\"}"
+     },
+     "id": "ZpOZt6VQteqUmpsoNjrpSZdkkXPpOQM5"
+    }
+   ],
+   "reply": "The current weather in Paris is overcast with a temperature of 17°C.",
+   "finish": "stop",
+   "calls_again": 0,
+   "thinking_chars": 148
+  },
+  "context": {
+   "prompt_tokens": 52583,
+   "seconds": 17.3,
+   "content": "58213"
+  },
+  "speed": {
+   "window_s": 30,
+   "tokens_total": 2946,
+   "seconds_total": 78.3
+  }
+ },
+ "launch_config_sha256": null
+}
