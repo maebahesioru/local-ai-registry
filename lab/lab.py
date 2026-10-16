@@ -237,8 +237,8 @@ def count(endpoint, text):
     return len(text) // 4, "estimate"
 
 
-def chat(endpoint, model, messages, timeout=3600, **kw):
-    out, secs = call(endpoint, "/v1/chat/completions", {"model": model, "messages": messages, "temperature": 0.6, **kw}, timeout=timeout)
+def chat(endpoint, model, messages, **kw):
+    out, secs = call(endpoint, "/v1/chat/completions", {"model": model, "messages": messages, "temperature": 0.6, **kw})
     c, u = out["choices"][0], dict(out.get("usage") or {})
     if (out.get("timings") or {}).get("peak_memory"):  # mlx-vlm: the allocator's peak for this request, decimal GB
         u["peak_memory_gb"] = out["timings"]["peak_memory"]
@@ -325,11 +325,16 @@ def gates(endpoint, launch):
     target = int(launch["ctx"] * 0.85)
     filler = " ".join(f"Line {i}: the archive notes that shipment {i * 7 % 997} left dock {i % 13} on schedule." for i in range(target // 24))  # ~23.6 tokens a line (measured: 32,834 tokens from 1,473 lines)
     prompt = filler + " The access code for the vault is 58213. " + "Anything else is routine."
+    dropped = []  # seconds each dropped attempt ran before its connection dropped
     for attempt in range(3):  # a rented host's port mapping can silently drop a connection that stays idle for
+        started = time.monotonic()
         try:                  # minutes while the prompt is prefilled; the retried prompt answers from the server's
-            c, u, secs = chat(endpoint, served, [{"role": "user", "content": prompt + "\n\nWhat is the access code for the vault? Reply with only the code."}], timeout=600)
+            c, u, secs = chat(endpoint, served, [{"role": "user", "content": prompt + "\n\nWhat is the access code for the vault? Reply with only the code."}])
             break             # prefix cache, so the retry costs seconds, and the gate is the same check
-        except (OSError, http.client.HTTPException):
+        except (OSError, http.client.HTTPException) as e:
+            if isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError):
+                raise         # a timeout is the card being slow, not a dropped connection: fail the gate, never retry
+            dropped.append(round(time.monotonic() - started, 1))
             if attempt == 2:
                 raise
             log("context gate: the connection dropped before the answer; retrying")
@@ -339,6 +344,9 @@ def gates(endpoint, launch):
     got = u.get("prompt_tokens") or 0
     ok["context"] = "58213" in (c["message"].get("content") or "") and got >= launch["ctx"] * 0.6
     ev["context"] = {"prompt_tokens": got, "seconds": round(secs, 1), "content": (c["message"].get("content") or "")[-80:]}
+    if dropped:  # the number came from a retry: say which attempt answered and how long the dropped attempt ran
+        ev["context"]["retried"] = attempt
+        ev["context"]["dropped_s"] = dropped
     if u.get("peak_memory_gb"):
         ev["context"]["peak_gib"] = round(u["peak_memory_gb"] * 1e9 / 2**30, 2)
     # speed: decode at concurrency 1, measured over the first 30 s of a streamed answer; the answer still runs
