@@ -16,7 +16,8 @@ export function detect(cat, gpu, vram) {
   const n = norm(gpu);
   const hits = Object.entries(cat.cards).filter(([id, c]) => names(id, c).some((x) => x && n.includes(x)) && (!vram || Math.abs(c.vram_gb - vram) <= 2));
   const best = ([id, c]) => Math.max(...names(id, c).filter((x) => n.includes(x)).map((x) => x.length));
-  return hits.sort((a, b) => best(b) - best(a))[0]?.[0] ?? null;
+  return hits.sort((a, b) => best(b) - best(a) ||
+    (vram ? Math.abs(a[1].vram_gb - vram) - Math.abs(b[1].vram_gb - vram) : 0))[0]?.[0] ?? null;
 }
 
 /** The recommended recipe for a GPU (or null); `all: true` returns the card's top three. */
@@ -66,7 +67,8 @@ function hostSteps(l) {
 /** The steps to run a recipe by hand: download the weights, write the config, start the container. */
 export function steps(r) {
   const l = r.launch, name = (r.key ?? r.model).split("/").pop();
-  const out = l.setup ? [{ title: "Set up first", code: `# ${l.setup}\n# Full instructions: ${l.source}` }] : [];
+  const src = l.source ? `\n# Full instructions: ${l.source}` : "";
+  const out = l.setup ? [{ title: "Set up first", code: `# ${l.setup}${src}` }] : [];
   if (l.kind === "host") return [...out, ...hostSteps(l)];
   let image = l.image;
   if (l.build) {  // an image built from the source's Dockerfile at a pinned commit

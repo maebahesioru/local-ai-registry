@@ -36,7 +36,8 @@ def detect(cat, gpu, vram=None):
     n = _norm(gpu)
     hits = [(i, c) for i, c in cat["cards"].items()
             if any(x and x in n for x in _names(i, c)) and (not vram or abs(c["vram_gb"] - vram) <= 2)]
-    hits.sort(key=lambda x: -max(len(y) for y in _names(*x) if y and y in n))
+    hits.sort(key=lambda x: (-max(len(y) for y in _names(*x) if y and y in n),
+                             abs(x[1]["vram_gb"] - vram) if vram else 0))
     return hits[0][0] if hits else None
 
 
@@ -112,7 +113,8 @@ def steps(r):
     """The steps to run a recipe by hand: download the weights, write the config, start the container."""
     l = r["launch"]
     name = (r.get("key") or r["model"]).split("/")[-1]
-    out = [{"title": "Set up first", "code": f"# {l['setup']}\n# Full instructions: {l.get('source')}"}] if l.get("setup") else []
+    src = f"\n# Full instructions: {l['source']}" if l.get("source") else ""
+    out = [{"title": "Set up first", "code": f"# {l['setup']}{src}"}] if l.get("setup") else []
     if l.get("kind") == "host":
         return out + _host_steps(l)
     image = l.get("image")
