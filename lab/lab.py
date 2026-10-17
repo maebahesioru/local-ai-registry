@@ -354,7 +354,9 @@ def gates(endpoint, launch):
     tps, total, secs = stream_rate(endpoint, served, "Write a detailed 600-word story about a lighthouse keeper.")
     ok["speed"] = tps >= MIN_TPS
     ev["speed"] = {"window_s": 30, "tokens_total": total, "seconds_total": round(secs, 1)}
-    prefill = round(got / ev["context"]["seconds"]) if got and ev["context"]["seconds"] else None
+    # a retried answer comes from the server's prefix cache, so its seconds is not a prefill time: leave the
+    # number out rather than publish a cached rate (the run can be repeated for a real prefill measurement)
+    prefill = None if dropped else (round(got / ev["context"]["seconds"]) if got and ev["context"]["seconds"] else None)
     proof = {"gates": " ".join(g for g in GATES if ok.get(g)), "tps": round(tps, 1), "prefill": prefill, "served": served}
     return all(ok.get(g) for g in GATES), proof, {"ok": ok, **ev}
 
